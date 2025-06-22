@@ -6,7 +6,9 @@
     "dev": "kill-port 3003 && next dev -p 3003 --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "db:apply-rls": "NODE_OPTIONS='--loader tsx' tsx scripts/db/apply-rls.ts",
+    "db:test-rls": "NODE_OPTIONS='--loader tsx' tsx scripts/db/test-rls.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.10.0",
@@ -53,6 +55,8 @@
     "prisma": "^6.10.1",
     "tailwindcss": "^4",
     "testcontainers": "^11.0.3",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.20.3",
     "typescript": "^5"
   }
 }
