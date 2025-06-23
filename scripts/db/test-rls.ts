@@ -23,21 +23,28 @@ async function main() {
 
     // Create test tenants
     console.log('Creating test tenants...');
+    
+    // First, delete any existing test data
+    await adminPrisma.featureFlag.deleteMany({
+      where: { tenantId: { in: ['test-tenant-1', 'test-tenant-2'] } },
+    });
+    
+    await adminPrisma.tenant.deleteMany({
+      where: { id: { in: ['test-tenant-1', 'test-tenant-2'] } },
+    });
+    
+    // Create test tenants
     const [tenant1, tenant2] = await Promise.all([
-      adminPrisma.tenant.upsert({
-        where: { id: 'test-tenant-1' },
-        update: {},
-        create: {
+      adminPrisma.tenant.create({
+        data: {
           id: 'test-tenant-1',
           name: 'Test Tenant 1',
           type: 'SCHOOL',
           status: 'ACTIVE',
         },
       }),
-      adminPrisma.tenant.upsert({
-        where: { id: 'test-tenant-2' },
-        update: {},
-        create: {
+      adminPrisma.tenant.create({
+        data: {
           id: 'test-tenant-2',
           name: 'Test Tenant 2',
           type: 'SCHOOL',
@@ -55,14 +62,14 @@ async function main() {
         data: {
           name: 'FEATURE_A',
           isEnabled: true,
-          tenant: { connect: { id: tenant1.id } },
+          tenantId: tenant1.id,
         },
       }),
       adminPrisma.featureFlag.create({
         data: {
           name: 'FEATURE_B',
           isEnabled: false,
-          tenant: { connect: { id: tenant2.id } },
+          tenantId: tenant2.id,
         },
       }),
     ]);
@@ -79,8 +86,15 @@ async function main() {
     const tenant1Prisma = createScopedPrisma(tenant1.id);
     const tenant2Prisma = createScopedPrisma(tenant2.id);
 
+    // Set tenant context for the current request
+    setTenantContext(tenant1.id);
+    
     // Test that each tenant can only see their own feature flags
+    console.log('Fetching features for Tenant 1...');
     const tenant1Features = await tenant1Prisma.featureFlag.findMany();
+    
+    setTenantContext(tenant2.id);
+    console.log('Fetching features for Tenant 2...');
     const tenant2Features = await tenant2Prisma.featureFlag.findMany();
 
     console.log(`Tenant 1 (${tenant1.id}) features:`, tenant1Features.map(f => ({

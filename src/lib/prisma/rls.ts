@@ -17,13 +17,16 @@ function generateRLSSQL() {
     DROP POLICY IF EXISTS "${model}_tenant_isolation" ON \"${model}\";
     
     -- Create policy to restrict access to tenant's data
+    -- Explicitly cast both sides to text for reliable comparison
+    -- Also handle the case where the setting might not be set yet
     CREATE POLICY "${model}_tenant_isolation" ON \"${model}\"
-      USING (\"tenantId\" = current_setting('app.current_tenant_id')::text);
+      USING (
+        (current_setting('app.bypass_rls', true) = 'true') OR
+        (\"tenantId\" = current_setting('app.current_tenant_id', true))
+      );
     
-    -- Allow system users to bypass RLS (for migrations, etc.)
+    -- Drop the bypass policy since we've incorporated it into the main policy
     DROP POLICY IF EXISTS "${model}_bypass_rls" ON \"${model}\";
-    CREATE POLICY "${model}_bypass_rls" ON \"${model}\"
-      USING (current_setting('app.bypass_rls', true) = 'true');
   `).join('\n');
 
   return `

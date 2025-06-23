@@ -22,10 +22,10 @@ async function main() {
     console.log('Connected to database');
 
     // Set the JWT secret for RLS
-    await prisma.$executeRaw`
-      ALTER DATABASE ${process.env.DATABASE_NAME || 'scope_platform_dev'} 
-      SET "app.jwt_secret" TO ${process.env.NEXTAUTH_SECRET || 'your-super-secret-jwt-secret'};
-    `;
+    await prisma.$executeRawUnsafe(
+      `ALTER DATABASE ${process.env.DATABASE_NAME || 'scope_platform_dev'} 
+      SET "app.jwt_secret" TO '${process.env.NEXTAUTH_SECRET || 'your-super-secret-jwt-secret'}'`
+    );
 
     // Apply RLS policies
     await setupRowLevelSecurity(prisma);
