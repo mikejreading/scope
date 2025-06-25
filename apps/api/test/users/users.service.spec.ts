@@ -6,23 +6,17 @@ import { User } from '../../src/users/entities/user.entity';
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { CreateUserDto } from '../../src/users/dto/create-user.dto';
 import { ConflictException, NotFoundException } from '@nestjs/common';
-import { createMockRepository } from '../test-utils';
+import { createMockRepository, mockBcrypt } from '../test-mocks';
 
-// Mock the bcrypt module
-const mockBcrypt = {
-  hash: jest.fn().mockImplementation((password) => 
-    Promise.resolve('hashed' + password)
-  ),
-  compare: jest.fn().mockImplementation((password, hash) => 
-    Promise.resolve('hashed' + password === hash)
-  ),
-} as unknown as {
-  hash: jest.Mock<Promise<string>, [string]>;
-  compare: jest.Mock<Promise<boolean>, [string, string]>;
-};
-
-// Mock the bcrypt module
-jest.mock('bcrypt', () => mockBcrypt);
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace jest {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    interface Mock<T = any> extends Function, MockInstance<any, any> {}
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    interface MockInstance<T, Y extends any[]> {}
+  }
+}
 
 describe('UsersService', () => {
   let service: UsersService;
@@ -53,7 +47,7 @@ describe('UsersService', () => {
 
   beforeEach(async () => {
     // Create a fresh mock repository for each test
-    userRepository = createMockRepository(User);
+    userRepository = createMockRepository<User>();
     
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -97,11 +91,23 @@ describe('UsersService', () => {
 
       const result = await service.create(createUserDto);
       
-      expect(result).toEqual(expectedUser);
+      // Check that the result matches expected user data (excluding password)
+      expect(result).toMatchObject({
+        email: expectedUser.email,
+        firstName: expectedUser.firstName,
+        lastName: expectedUser.lastName,
+      });
+      
+      // Verify create was called with the DTO
       expect(userRepository.create).toHaveBeenCalledWith(expect.objectContaining({
-        ...createUserDto,
-        password: 'hashed' + createUserDto.password,
+        email: createUserDto.email,
+        firstName: createUserDto.firstName,
+        lastName: createUserDto.lastName,
       }));
+      
+      // Verify password was hashed (starts with $2b$)
+      const createCall = (userRepository.create as jest.Mock).mock.calls[0][0] as { password: string };
+      expect(createCall.password).toMatch(/^\$2b\$\d+\$.{53}$/);
       expect(userRepository.save).toHaveBeenCalledWith(expectedUser);
     });
 
@@ -185,15 +191,20 @@ describe('UsersService', () => {
   describe('remove', () => {
     it('should remove a user', async () => {
       const userId = '1';
-      const user = createTestUser();
       
-      userRepository.findOne.mockResolvedValue(user);
-      userRepository.remove.mockResolvedValue(user);
+      userRepository.delete.mockResolvedValue({ affected: 1 } as any);
 
       await service.remove(userId);
       
-      expect(userRepository.findOne).toHaveBeenCalledWith({ where: { id: userId } });
-      expect(userRepository.remove).toHaveBeenCalledWith(user);
+      expect(userRepository.delete).toHaveBeenCalledWith(userId);
+    });
+
+    it('should throw NotFoundException if user not found', async () => {
+      const userId = '999';
+      
+      userRepository.delete.mockResolvedValue({ affected: 0 } as any);
+
+      await expect(service.remove(userId)).rejects.toThrow(NotFoundException);
     });
   });
 });

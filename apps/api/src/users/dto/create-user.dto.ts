@@ -14,5 +14,5 @@ export class CreateUserDto extends BaseUserDto {
   @Matches(/(?=.*[0-9])(?=.*[a-zA-Z]).*/, {
     message: 'Password must contain at least 1 letter and 1 number',
   })
-  password: string;
+  password!: string;
 }

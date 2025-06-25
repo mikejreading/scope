@@ -6,19 +6,19 @@ export class BaseUserDto {
   @IsEmail()
   @IsNotEmpty()
   @MaxLength(255)
-  email: string;
+  email!: string;
 
   @ApiProperty({ description: 'First name', example: 'John' })
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)
-  firstName: string;
+  firstName!: string;
 
   @ApiProperty({ description: 'Last name', example: 'Doe' })
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)
-  lastName: string;
+  lastName!: string;
 
   @ApiPropertyOptional({ description: 'Whether the user is active', default: true })
   @IsBoolean()

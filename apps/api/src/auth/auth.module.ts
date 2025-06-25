@@ -8,12 +8,14 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JWT_CONFIG } from './constants/jwt.constants';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { TokenModule } from './token/token.module';
 
 @Module({
   imports: [
     UsersModule,
     PassportModule,
     JwtModule.register(JWT_CONFIG),
+    TokenModule,
   ],
   controllers: [AuthController],
   providers: [

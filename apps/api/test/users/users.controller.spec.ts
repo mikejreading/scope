@@ -11,23 +11,17 @@ import { UsersService } from '../../src/users/users.service';
 import { User } from '../../src/users/entities/user.entity';
 import { CreateUserDto } from '../../src/users/dto/create-user.dto';
 import { UpdateUserDto } from '../../src/users/dto/update-user.dto';
-import { createMockRepository } from '../test-utils';
+import { createMockRepository, mockBcrypt } from '../test-mocks';
 
-// Mock bcrypt
-const mockBcrypt = {
-  hash: jest.fn().mockImplementation((password) => 
-    Promise.resolve('hashed' + password)
-  ),
-  compare: jest.fn().mockImplementation((password, hash) => 
-    Promise.resolve('hashed' + password === hash)
-  ),
-} as unknown as {
-  hash: jest.Mock<Promise<string>, [string]>;
-  compare: jest.Mock<Promise<boolean>, [string, string]>;
-};
-
-// Mock the bcrypt module
-jest.mock('bcrypt', () => mockBcrypt);
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace jest {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    interface Mock<T = any> extends Function, MockInstance<any, any> {}
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    interface MockInstance<T, Y extends any[]> {}
+  }
+}
 
 describe('UsersController (e2e)', () => {
   let app: INestApplication;
@@ -50,7 +44,8 @@ describe('UsersController (e2e)', () => {
     ...testUserData,
     id: overrides.id || testUserData.id,
     email: overrides.email || testUserData.email,
-    password: overrides.password || 'hashed' + testUserData.password,
+    // Use a valid bcrypt hash as default password
+    password: overrides.password || '$2b$10$vJSF3BBEdQEN7KoUld2JU.uVTvdXt7REibqyZ3uJH5SX.6xti6OL6',
     firstName: overrides.firstName || testUserData.firstName,
     lastName: overrides.lastName || testUserData.lastName,
     isActive: overrides.isActive !== undefined ? overrides.isActive : testUserData.isActive,
@@ -60,7 +55,7 @@ describe('UsersController (e2e)', () => {
 
   beforeAll(async () => {
     // Create a fresh mock repository for testing
-    userRepository = createMockRepository(User);
+    userRepository = createMockRepository<User>();
     
     const module: TestingModule = await Test.createTestingModule({
       controllers: [UsersController],
@@ -106,7 +101,22 @@ describe('UsersController (e2e)', () => {
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
       
-      expect(response.body).toEqual(users);
+      // Check that the response contains the expected user data (ignoring date format)
+      const responseUsers = response.body;
+      expect(responseUsers).toHaveLength(users.length);
+      responseUsers.forEach((user: any, index: number) => {
+        const expectedUser = users[index];
+        expect(user).toMatchObject({
+          id: expectedUser.id,
+          email: expectedUser.email,
+          firstName: expectedUser.firstName,
+          lastName: expectedUser.lastName,
+          isActive: expectedUser.isActive
+        });
+        // Verify dates are valid ISO strings
+        expect(new Date(user.createdAt).toISOString()).toBe(user.createdAt);
+        expect(new Date(user.updatedAt).toISOString()).toBe(user.updatedAt);
+      });
       expect(userRepository.find).toHaveBeenCalled();
     });
   });
@@ -117,17 +127,28 @@ describe('UsersController (e2e)', () => {
       userRepository.findOne.mockResolvedValue(testUser);
 
       const response = await request(app.getHttpServer())
-        .get(`/users/${userId}`)
+        .get(`/users/${testUser.id}`) // Use testUser.id directly
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
       
-      expect(response.body).toEqual(testUser);
+      // Check that the response contains the expected user data (ignoring date format)
+      const responseUser = response.body;
+      expect(responseUser).toMatchObject({
+        id: testUser.id,
+        email: testUser.email,
+        firstName: testUser.firstName,
+        lastName: testUser.lastName,
+        isActive: testUser.isActive
+      });
+      // Verify dates are valid ISO strings
+      expect(new Date(responseUser.createdAt).toISOString()).toBe(responseUser.createdAt);
+      expect(new Date(responseUser.updatedAt).toISOString()).toBe(responseUser.updatedAt);
       expect(userRepository.findOne).toHaveBeenCalledWith({ where: { id: userId } });
     });
 
     it('should return 404 if user not found', async () => {
       const userId = '999';
-      userRepository.findOne.mockResolvedValue(undefined);
+      userRepository.findOne.mockResolvedValue(null);
 
       await request(app.getHttpServer())
         .get(`/users/${userId}`)
@@ -151,21 +172,39 @@ describe('UsersController (e2e)', () => {
       });
 
       // Mock the repository methods
-      userRepository.findOne.mockResolvedValue(undefined);
+      userRepository.findOne.mockResolvedValue(null);
       userRepository.create.mockReturnValue(expectedUser);
       userRepository.save.mockResolvedValue(expectedUser);
 
       const response = await request(app.getHttpServer())
         .post('/users')
-        .set('Authorization', `Bearer ${authToken}`)
         .send(createUserDto)
         .expect(201);
       
-      expect(response.body).toEqual(expectedUser);
+      const responseUser = response.body;
+      
+      // Check that the response contains the expected user data
+      expect(responseUser).toMatchObject({
+        email: createUserDto.email,
+        firstName: createUserDto.firstName,
+        lastName: createUserDto.lastName,
+        isActive: true,
+      });
+      
+      // Verify the response has valid timestamps
+      expect(new Date(responseUser.createdAt).toISOString()).toBe(responseUser.createdAt);
+      expect(new Date(responseUser.updatedAt).toISOString()).toBe(responseUser.updatedAt);
+      
+      // Verify create was called with the DTO (checking only the fields we care about)
       expect(userRepository.create).toHaveBeenCalledWith(expect.objectContaining({
-        ...createUserDto,
-        password: 'hashed' + createUserDto.password,
+        email: createUserDto.email,
+        firstName: createUserDto.firstName,
+        lastName: createUserDto.lastName,
       }));
+      
+      // Verify password was hashed (starts with $2b$)
+      const createCall = (userRepository.create as jest.Mock).mock.calls[0][0] as { password: string };
+      expect(createCall.password).toMatch(/^\$2b\$\d+\$.{53}$/);
       expect(userRepository.save).toHaveBeenCalledWith(expectedUser);
     });
   });
@@ -180,12 +219,28 @@ describe('UsersController (e2e)', () => {
       userRepository.save.mockResolvedValue(updatedUser);
 
       const response = await request(app.getHttpServer())
-        .patch(`/users/${userId}`)
+        .patch(`/users/${testUser.id}`)
         .set('Authorization', `Bearer ${authToken}`)
         .send(updateUserDto)
         .expect(200);
       
-      expect(response.body).toEqual(updatedUser);
+      // Check that the response contains the updated user data
+      const responseUser = response.body;
+      expect(responseUser).toMatchObject({
+        id: testUser.id,
+        firstName: updateUserDto.firstName,
+        lastName: updateUserDto.lastName,
+      });
+      
+      // Verify preload was called with the update data
+      expect(userRepository.preload).toHaveBeenCalledWith(expect.objectContaining({
+        id: testUser.id,
+        firstName: updateUserDto.firstName,
+        lastName: updateUserDto.lastName,
+      }));
+      // Verify dates are valid ISO strings
+      expect(new Date(responseUser.createdAt).toISOString()).toBe(responseUser.createdAt);
+      expect(new Date(responseUser.updatedAt).toISOString()).toBe(responseUser.updatedAt);
       expect(userRepository.findOne).toHaveBeenCalledWith({ where: { id: userId } });
       expect(userRepository.save).toHaveBeenCalledWith(updatedUser);
     });

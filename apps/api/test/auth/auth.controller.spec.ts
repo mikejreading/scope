@@ -8,23 +8,17 @@ import { describe, it, expect, beforeAll, afterAll, afterEach, jest } from '@jes
 
 import { AppModule } from '../../src/app.module';
 import { User } from '../../src/users/entities/user.entity';
-import { createMockRepository } from '../test-utils';
+import { createMockRepository, mockBcrypt } from '../test-mocks';
 
-// Mock bcrypt
-const mockBcrypt = {
-  hash: jest.fn().mockImplementation((password) => 
-    Promise.resolve('hashed' + password)
-  ),
-  compare: jest.fn().mockImplementation((password, hash) => 
-    Promise.resolve('hashed' + password === hash)
-  ),
-} as unknown as {
-  hash: jest.Mock<Promise<string>, [string]>;
-  compare: jest.Mock<Promise<boolean>, [string, string]>;
-};
-
-// Mock the bcrypt module
-jest.mock('bcrypt', () => mockBcrypt);
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace jest {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    interface Mock<T = any> extends Function, MockInstance<any, any> {}
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    interface MockInstance<T, Y extends any[]> {}
+  }
+}
 
 describe('AuthController (e2e)', () => {
   let app: INestApplication;
@@ -57,7 +51,7 @@ describe('AuthController (e2e)', () => {
 
   beforeAll(async () => {
     // Create a fresh mock repository for testing
-    userRepository = createMockRepository(User);
+    userRepository = createMockRepository<User>();
     
     const module: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -173,8 +167,8 @@ describe('AuthController (e2e)', () => {
         createTestUser({ password: 'hashedcorrectpassword' })
       );
 
-      // Mock bcrypt.compare to return false
-      (mockBcrypt.compare as jest.Mock).mockResolvedValue(false);
+      // Mock bcrypt.compare to return false for this test
+      (mockBcrypt.compare as jest.Mock).mockImplementationOnce(() => Promise.resolve(false));
 
       const response = await request(app.getHttpServer())
         .post('/auth/login')
